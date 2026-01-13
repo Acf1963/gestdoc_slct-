@@ -1,0 +1,1 @@
+// Projeto migrado para Vanilla JS no index.html.

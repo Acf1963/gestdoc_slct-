@@ -1,0 +1,7 @@
+{
+  "name": "Gestdoc - Gestão de Arquivos",
+  "description": "Uma plataforma robusta para gestão de solicitações de arquivos, operando perfeitamente online e offline com suporte a importação de dados e relatórios em tempo real.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

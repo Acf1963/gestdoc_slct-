@@ -1,0 +1,805 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestdoc - Arquivo na Palma da Mão</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- PWA Manifest Support -->
+    <link rel="manifest" href="data:application/manifest+json,{'name':'Gestdoc','short_name':'Gestdoc','start_url':'.','display':'standalone','background_color':'#000663','theme_color':'#000663','icons':[{'src':'https://cdn-icons-png.flaticon.com/512/281/281760.png','sizes':'512x512','type':'image/png'}]}">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: '#000663',
+                        moss: '#4F7942',
+                        slateBg: '#57616B',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap');
+        body { background-color: #57616B; font-family: 'Inter', sans-serif; scroll-behavior: smooth; margin: 0; padding: 0; }
+        .glass-card { background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4F7942; border-radius: 10px; }
+        .tab-active { background-color: white !important; color: #000663 !important; border-bottom: 4px solid #4F7942 !important; }
+        input, select, textarea { background-color: white !important; color: black !important; border: 2px solid #e2e8f0; }
+        input:focus, select:focus { border-color: #4F7942 !important; outline: none; }
+        input[readonly] { background-color: #f8fafc !important; color: #64748b !important; cursor: not-allowed; border-color: #e2e8f0 !important; }
+        .modal-overlay { background: rgba(0, 6, 99, 0.92); backdrop-filter: blur(8px); }
+        .nav-link-active { color: #4F7942 !important; font-weight: 800; }
+        .view { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        #login-screen {
+            background: linear-gradient(135deg, #000663 0%, #57616B 100%);
+        }
+        .sync-pulse { animation: syncPulse 2s infinite; }
+        @keyframes syncPulse { 
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        #connection-status-dot {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .status-dot-online { 
+            background-color: #4F7942; 
+            color: white; 
+            box-shadow: 0 0 15px rgba(79, 121, 66, 0.4);
+        }
+        .status-dot-offline { 
+            background-color: #ef4444; 
+            color: white; 
+            animation: emergencyPulse 1.5s infinite;
+        }
+        @keyframes emergencyPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body class="min-h-screen flex flex-col text-slate-900">
+
+    <!-- ÍCONE DE CONEXÃO -->
+    <div id="connection-status-dot" class="fixed top-24 right-6 z-[60] w-12 h-12 rounded-full flex items-center justify-center shadow-2xl border border-white/20 status-dot-online cursor-help" title="Sistema Online">
+        <i id="connection-icon" class="fas fa-wifi text-sm"></i>
+    </div>
+
+    <!-- TELA DE LOGIN -->
+    <div id="login-screen" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div class="glass-card w-full max-w-md p-10 rounded-[40px] shadow-2xl text-center">
+            <div class="bg-navy w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl">
+                <i class="fas fa-file-invoice text-4xl text-white"></i>
+            </div>
+            <h2 class="text-3xl font-black text-navy uppercase tracking-tighter mb-2">Acesso Gestdoc</h2>
+            <p class="text-slate-500 font-medium mb-8">Insira suas credenciais para continuar</p>
+            
+            <form id="login-form" class="space-y-4">
+                <div class="text-left">
+                    <label class="text-[10px] font-black text-navy uppercase ml-4">Usuário</label>
+                    <input type="text" id="login-user" required placeholder="admin" class="w-full p-4 rounded-2xl font-bold text-lg">
+                </div>
+                <div class="text-left">
+                    <label class="text-[10px] font-black text-navy uppercase ml-4">Palavra-passe</label>
+                    <input type="password" id="login-pass" required placeholder="••••••" class="w-full p-4 rounded-2xl font-bold text-lg">
+                </div>
+                <div id="login-error" class="text-red-500 text-xs font-bold hidden">Credenciais inválidas. Tente novamente.</div>
+                <button type="submit" class="w-full bg-navy text-white p-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-navy/90 transition-all mt-4">Entrar no Sistema</button>
+            </form>
+            <div class="mt-8 pt-6 border-t border-slate-100">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Arquivo Inteligente &copy; 2024</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTENT -->
+    <div id="app-content" class="hidden flex-grow flex flex-col">
+        <header class="bg-navy text-white sticky top-0 z-50 shadow-xl border-b border-white/10">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-3 cursor-pointer" onclick="navigateTo('home')">
+                    <div class="bg-moss p-2 rounded-lg shadow-inner">
+                        <i class="fas fa-file-invoice text-2xl text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-black tracking-tight leading-none">GESTDOC</h1>
+                        <span class="text-[10px] uppercase tracking-widest text-moss font-bold">Arquivo Inteligente</span>
+                    </div>
+                </div>
+                <nav class="hidden lg:flex items-center gap-8">
+                    <button onclick="navigateTo('home')" class="nav-item hover:text-moss transition-colors font-bold text-sm uppercase flex items-center gap-2" data-tab="home">Início</button>
+                    <button onclick="navigateTo('requests')" class="nav-item hover:text-moss transition-colors font-bold text-sm uppercase flex items-center gap-2" data-tab="requests">Solicitação</button>
+                    <button onclick="navigateTo('reports')" class="nav-item hover:text-moss transition-colors font-bold text-sm uppercase flex items-center gap-2" data-tab="reports">Relatórios</button>
+                    <button onclick="toggleModal(true)" class="hover:text-moss transition-colors font-bold text-sm uppercase flex items-center gap-2"><i class="fas fa-database text-moss"></i> Cadastros</button>
+                    
+                    <div class="h-6 w-px bg-white/20 mx-2"></div>
+                    
+                    <button id="btn-manual-sync" onclick="manualSync()" class="bg-white/10 hover:bg-moss text-white px-4 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2 shadow-lg border border-white/10">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>Sincronizar</span>
+                    </button>
+
+                    <div class="flex items-center gap-4">
+                        <div class="text-right hidden xl:block">
+                            <div id="logged-user-name" class="text-xs font-black uppercase tracking-tighter leading-none">Usuário</div>
+                            <div class="text-[9px] text-moss font-bold uppercase">Online</div>
+                        </div>
+                        <button onclick="logout()" class="w-10 h-10 rounded-full bg-white/10 hover:bg-red-500 flex items-center justify-center transition-all group" title="Sair">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
+        <main class="flex-grow">
+            <!-- HOME VIEW -->
+            <section id="view-home" class="view">
+                <div class="relative h-[380px] flex items-center overflow-hidden">
+                    <div class="absolute inset-0 z-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&q=80&w=1920')">
+                        <div class="absolute inset-0 bg-navy/80"></div>
+                    </div>
+                    <div class="container mx-auto px-4 relative z-10 text-white flex flex-col md:flex-row justify-between items-center gap-8">
+                        <div class="max-w-2xl space-y-4 text-left">
+                            <h1 class="text-5xl font-black leading-tight">Sua Gestão de Arquivos <span class="text-moss">Simplificada</span></h1>
+                            <p class="text-gray-300 font-medium">Controle total sobre indexação, logística e consultas documentais em tempo real.</p>
+                        </div>
+                        <div class="flex justify-end w-full md:w-auto">
+                            <button onclick="navigateTo('requests')" class="bg-moss px-10 py-4 rounded-xl font-black text-sm uppercase shadow-2xl hover:bg-moss/90 transition-all transform hover:scale-105">Criar Solicitação</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="container mx-auto px-4 -mt-16 relative z-10 mb-12">
+                    <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+                    
+                    <div id="main-table-section" class="mt-12 glass-card p-8 rounded-3xl shadow-2xl border-t-8 border-navy overflow-hidden">
+                        <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                            <h2 class="text-2xl font-black text-navy uppercase tracking-tighter">Fluxo Documental Recente</h2>
+                            <div class="flex gap-2">
+                                 <input type="text" id="table-search" oninput="renderTable()" placeholder="Pesquisar..." class="px-4 py-2 rounded-xl text-xs font-bold border-2 outline-none">
+                                 <button onclick="document.getElementById('import-requests-excel').click()" class="bg-navy text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-navy/90 shadow-lg flex items-center gap-2">
+                                    <i class="fas fa-file-import"></i> Mapear Excel
+                                 </button>
+                                 <input type="file" id="import-requests-excel" class="hidden" accept=".xlsx, .xls" onchange="initRequestImport(event)">
+                                 <button onclick="exportToExcel()" class="bg-moss text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-moss/90 shadow-lg"><i class="fas fa-download"></i></button>
+                            </div>
+                        </div>
+                        <div id="requests-table-container" class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-100"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REQUEST VIEW -->
+            <section id="view-requests" class="view hidden container mx-auto px-4 py-12">
+                <div class="glass-card p-10 rounded-[40px] max-w-4xl mx-auto shadow-2xl border-t-[12px] border-navy relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-10 border-b pb-6">
+                        <h2 id="form-title" class="text-3xl font-black text-navy uppercase tracking-tighter">Solicitação de Arquivo</h2>
+                        <button onclick="navigateTo('home')" class="bg-moss text-white px-6 py-3 rounded-full font-black text-xs uppercase flex items-center gap-3 shadow-xl hover:bg-moss/80 transition-all group">
+                            <i class="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+                            Voltar para Início
+                        </button>
+                    </div>
+                    <form id="request-form" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Número da Caixa</label>
+                            <input type="text" id="f-caixa" required placeholder="Ex: CX-001-24" class="w-full p-4 rounded-2xl font-bold text-lg">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Cliente / Empresa</label>
+                            <select id="f-cliente" required class="w-full p-4 rounded-2xl font-bold text-lg">
+                                <option value="">Selecione o Cliente</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Sector Responsável</label>
+                            <select id="f-sector" required onchange="updateSolicitantesSelect()" class="w-full p-4 rounded-2xl font-bold text-lg"></select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Solicitante (Filtrado)</label>
+                            <select id="f-solicitante" required class="w-full p-4 rounded-2xl font-bold text-lg" disabled>
+                                <option value="">Selecione o Setor Primeiro</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Tipo de Tratamento</label>
+                            <select id="f-tratamento" class="w-full p-4 rounded-2xl font-bold text-lg">
+                                <option>Preparação Z1</option><option>Preparação Z2</option><option>Consulta Interna</option><option>Consulta Externa</option><option>Digitalização</option><option>Indexação</option><option>Expurgo</option>
+                            </select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Operador Responsável</label>
+                            <select id="f-operador" class="w-full p-4 rounded-2xl font-bold text-lg"></select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Data de Início</label>
+                            <input type="date" id="f-data-inicio" required class="w-full p-4 rounded-2xl font-bold text-lg">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Data Atual (Registo)</label>
+                            <input type="date" id="f-data-atual" readonly class="w-full p-4 rounded-2xl font-bold text-lg bg-slate-100 cursor-not-allowed" title="A data de hoje não pode ser alterada">
+                        </div>
+                        <div class="space-y-2 md:col-span-2">
+                            <label class="text-[10px] font-black text-navy uppercase ml-1">Estado do Processo</label>
+                            <select id="f-estado" class="w-full p-4 rounded-2xl font-bold text-lg">
+                                <option value="Em Curso">Em Curso (Ativo)</option>
+                                <option value="Finalizado">Finalizado (Concluído)</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2 pt-6">
+                            <button type="submit" id="form-submit-btn" class="w-full bg-navy text-white p-6 rounded-3xl font-black text-xl hover:bg-navy/90 transition-all shadow-2xl uppercase tracking-widest">Registrar Movimentação</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- REPORTS VIEW -->
+            <section id="view-reports" class="view hidden container mx-auto px-4 py-12">
+                <div class="glass-card p-10 rounded-[40px] shadow-2xl">
+                    <h2 class="text-3xl font-black text-navy mb-10 border-b pb-6 uppercase tracking-tighter">Relatórios Gerenciais</h2>
+                    <div id="reports-chart-container" class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                        <div class="bg-slate-50 p-8 rounded-3xl border-2 border-slate-100">
+                            <h3 class="font-black text-navy uppercase text-xs mb-10 tracking-widest">Estatísticas de Fluxo</h3>
+                            <div id="reports-chart" class="h-64 flex items-end justify-around gap-6 px-4"></div>
+                        </div>
+                        <div class="space-y-6">
+                            <button onclick="exportToExcel()" class="w-full bg-navy text-white p-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg">
+                                <i class="fas fa-file-excel"></i> Exportar Base Completa
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ENTITY MODAL -->
+    <div id="entity-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-overlay">
+        <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-[32px] overflow-hidden shadow-2xl bg-white border border-white/20">
+            <div class="bg-navy p-6 shrink-0 shadow-lg">
+                <div class="flex justify-between items-center mb-6 text-white">
+                    <h2 class="text-xl font-black uppercase tracking-tighter"><i class="fas fa-database text-moss mr-2"></i> Cadastros Base</h2>
+                    <button onclick="toggleModal(false)" class="w-10 h-10 rounded-full bg-white/10 hover:bg-red-500 flex items-center justify-center transition-all"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="grid grid-cols-2 gap-3" id="import-buttons-container">
+                    <button onclick="document.getElementById('import-excel').click()" class="bg-moss text-white rounded-xl py-3 px-4 flex items-center justify-center gap-2 font-black text-[10px] uppercase shadow-lg">
+                        <i class="fas fa-file-excel"></i> Importar Excel
+                    </button>
+                    <input type="file" id="import-excel" class="hidden" accept=".xlsx, .xls" onchange="handleImportFile(event, 'excel')">
+                </div>
+            </div>
+
+            <div class="flex bg-slate-100 border-b overflow-x-auto custom-scrollbar shrink-0">
+                <button onclick="switchEntityTab('armazens')" id="tab-armazens" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Armazéns</button>
+                <button onclick="switchEntityTab('clientes')" id="tab-clientes" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Clientes</button>
+                <button onclick="switchEntityTab('sectores')" id="tab-sectores" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Sectores</button>
+                <button onclick="switchEntityTab('operadores')" id="tab-operadores" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Operadores</button>
+                <button onclick="switchEntityTab('solicitantes')" id="tab-solicitantes" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Solicitantes</button>
+                <button onclick="switchEntityTab('usuarios')" id="tab-usuarios" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-slate-400">Usuários</button>
+                <button onclick="switchEntityTab('sistema')" id="tab-sistema" class="modal-tab flex-1 min-w-[120px] py-4 text-[10px] font-black uppercase text-red-400">Sistema</button>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto p-6 bg-white custom-scrollbar">
+                <div id="entity-form-container" class="mb-8 bg-slate-50 p-6 rounded-3xl border-2 border-slate-200">
+                    <div id="modal-sector-link" class="hidden mb-4 space-y-1">
+                        <label class="text-[10px] font-black text-navy uppercase ml-1">Sector Responsável:</label>
+                        <select id="entity-parent" class="w-full p-4 rounded-2xl font-bold"></select>
+                    </div>
+                    <div class="flex gap-3">
+                        <div class="flex-grow space-y-3">
+                            <input type="text" id="entity-name" placeholder="Digite o nome..." class="w-full p-4 rounded-2xl font-bold text-lg">
+                            <div id="user-pass-field" class="hidden">
+                                <input type="password" id="entity-pass" placeholder="Palavra-passe..." class="w-full p-4 rounded-2xl font-bold text-lg">
+                            </div>
+                        </div>
+                        <button id="btn-save-entity" onclick="addEntity()" class="bg-navy text-white px-8 py-4 rounded-2xl font-black text-xs uppercase self-start">Salvar</button>
+                    </div>
+                </div>
+
+                <div id="system-tab-content" class="hidden space-y-8 py-4">
+                    <!-- ZONA DE INSTALAÇÃO DESKTOP -->
+                    <div class="bg-blue-50 border-2 border-blue-200 p-8 rounded-[32px] text-center mb-6">
+                        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-desktop text-3xl"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-blue-700 uppercase tracking-tighter mb-2">Modo Desktop</h3>
+                        <p class="text-blue-600 font-medium text-xs mb-6">Instale o Gestdoc diretamente no seu PC para acesso offline rápido e ícone na barra de tarefas.</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button onclick="installPWA()" id="btn-install-pwa" class="hidden bg-blue-600 text-white p-4 rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-blue-700 transition-all">
+                                <i class="fas fa-plus-circle mr-2"></i> Instalar via Browser
+                            </button>
+                            <button onclick="downloadLauncher()" class="bg-white border-2 border-blue-200 text-blue-700 p-4 rounded-2xl font-black text-xs uppercase shadow-sm hover:bg-blue-100 transition-all">
+                                <i class="fas fa-download mr-2"></i> Baixar Lançador (.bat)
+                            </button>
+                        </div>
+                        <p class="text-[9px] text-blue-400 mt-4 italic">* O lançador .bat abre o sistema instantaneamente no navegador padrão.</p>
+                    </div>
+
+                    <div class="bg-red-50 border-2 border-red-200 p-8 rounded-[32px] text-center">
+                        <h3 class="text-2xl font-black text-red-700 uppercase tracking-tighter mb-2">Zona de Perigo</h3>
+                        <button onclick="resetDatabase()" class="w-full bg-red-600 text-white p-6 rounded-2xl font-black text-lg uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all">
+                            Zerar Base de Dados
+                        </button>
+                    </div>
+                </div>
+
+                <div id="entity-list-section">
+                    <div id="modal-entities-list" class="space-y-3"></div>
+                </div>
+            </div>
+            <div class="p-6 border-t bg-slate-50 flex justify-center shrink-0">
+                <button onclick="toggleModal(false)" class="bg-navy text-white px-20 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl">Concluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAPPING MODAL -->
+    <div id="mapping-modal" class="hidden fixed inset-0 z-[150] flex items-center justify-center p-4 modal-overlay">
+        <div class="glass-card w-full max-w-2xl p-8 rounded-[40px] shadow-2xl max-h-[90vh] flex flex-col">
+            <h2 class="text-2xl font-black text-navy uppercase mb-6 tracking-tighter">Mapeamento de Colunas</h2>
+            <div id="mapping-fields-container" class="flex-grow overflow-y-auto custom-scrollbar space-y-4 pr-2"></div>
+            <div class="mt-8 flex gap-4 pt-6 border-t border-slate-100">
+                <button onclick="closeMappingModal()" class="flex-1 border-2 border-slate-200 text-slate-400 p-4 rounded-2xl font-black text-xs uppercase hover:bg-slate-50">Cancelar</button>
+                <button onclick="executeImportMapped()" class="flex-1 bg-moss text-white p-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-moss/90">Confirmar Importação</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- ESTADO ---
+        let state = {
+            requests: JSON.parse(localStorage.getItem('gestdoc_requests')) || [],
+            entities: JSON.parse(localStorage.getItem('gestdoc_entities')) || [],
+            currentUser: JSON.parse(sessionStorage.getItem('gestdoc_session')) || null,
+            currentView: 'home',
+            activeModalTab: 'armazens',
+            selectedModalIds: [],
+            editingRequestId: null
+        };
+
+        let deferredPrompt;
+
+        // --- PWA INSTALLATION LOGIC ---
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('btn-install-pwa');
+            if(installBtn) installBtn.classList.remove('hidden');
+        });
+
+        window.installPWA = async () => {
+            if (!deferredPrompt) {
+                alert("O sistema já está instalado ou o seu navegador não suporta PWA.");
+                return;
+            }
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+            }
+            deferredPrompt = null;
+        };
+
+        // --- LAUNCHER GENERATOR (.BAT) ---
+        window.downloadLauncher = () => {
+            const currentUrl = window.location.href;
+            const batContent = `@echo off\ntitle Gestdoc Launcher\necho Abrindo Gestdoc - Arquivo Inteligente...\nstart "" "${currentUrl}"\nexit`;
+            const blob = new Blob([batContent], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Lançador_Gestdoc.bat';
+            a.click();
+            window.URL.revokeObjectURL(url);
+            alert("O arquivo 'Lançador_Gestdoc.bat' foi descarregado. Coloque-o na sua Área de Trabalho para acesso rápido.");
+        };
+
+        const save = () => {
+            localStorage.setItem('gestdoc_requests', JSON.stringify(state.requests));
+            localStorage.setItem('gestdoc_entities', JSON.stringify(state.entities));
+        };
+
+        const ensureAdmin = () => {
+            const adminExists = state.entities.some(e => e.type === 'usuarios' && e.name === 'admin');
+            if(!adminExists) {
+                state.entities.push({ id: 'u_admin_fixed', name: 'admin', pass: '000000', type: 'usuarios' });
+                save();
+            }
+        };
+        ensureAdmin();
+
+        window.manualSync = function() {
+            const btn = document.getElementById('btn-manual-sync');
+            save();
+            btn.classList.replace('bg-white/10', 'bg-moss');
+            setTimeout(() => btn.classList.replace('bg-moss', 'bg-white/10'), 2000);
+        };
+
+        window.resetDatabase = function() {
+            const adminUser = state.entities.find(e => e.type === 'usuarios' && e.name === 'admin');
+            const pass = prompt('Introduza a palavra-passe do administrador:');
+            if (pass === adminUser.pass) {
+                if (confirm('Deseja apagar todos os dados permanentemente?')) {
+                    state.requests = [];
+                    state.entities = [{ id: 'u_admin_fixed', name: 'admin', pass: adminUser.pass, type: 'usuarios' }];
+                    save();
+                    location.reload();
+                }
+            } else if (pass !== null) alert('Incorreta.');
+        };
+
+        function renderHome() {
+            const grid = document.getElementById('dashboard-grid');
+            if(!grid) return;
+            const totals = state.requests.length;
+            const inCourse = state.requests.filter(r => r.estado === 'Em Curso').length;
+            const done = state.requests.filter(r => r.estado === 'Finalizado').length;
+            const avgVal = totals > 0 ? (state.requests.reduce((acc, curr) => acc + calcDays(curr.dataInicio), 0) / totals).toFixed(1) : '0';
+            
+            const searchCount = state.requests.filter(r => r.tratamento.toLowerCase().includes('consulta')).length;
+            const indexingCount = state.requests.filter(r => r.tratamento.toLowerCase().includes('indexação') || r.tratamento.toLowerCase().includes('indexacao')).length;
+            const digitalCount = state.requests.filter(r => r.tratamento.toLowerCase().includes('digitalização') || r.tratamento.toLowerCase().includes('digitalizacao')).length;
+            
+            const isFullySynced = true; // LocalStorage é síncrono
+
+            const cards = [
+                { label: 'Solicitações Totais', val: totals, icon: 'fa-list-check', color: 'border-navy', filter: 'all' },
+                { label: 'Em Tratamento', val: inCourse, icon: 'fa-sync-alt', color: 'border-moss', filter: 'Em Curso' },
+                { label: 'Tempo Médio', val: `${avgVal}d`, icon: 'fa-hourglass-half', color: 'border-amber-600', filter: 'all' },
+                { label: 'Finalizado', val: done, icon: 'fa-check-double', color: 'border-green-600', filter: 'Finalizado' },
+                { label: 'Consulta', val: searchCount, icon: 'fa-search', color: 'border-blue-500', filter: 'Consulta' },
+                { label: 'Indexação', val: indexingCount, icon: 'fa-folder-tree', color: 'border-purple-600', filter: 'Indexação' },
+                { label: 'Digitalização', val: digitalCount, icon: 'fa-file-pdf', color: 'border-cyan-600', filter: 'Digitalização' },
+                { label: 'Base Local Ativa', val: totals, icon: 'fa-database', color: 'border-moss', filter: 'all' }
+            ];
+
+            grid.innerHTML = cards.map(c => `
+                <div onclick="filterByCard('${c.filter}')" class="glass-card p-6 rounded-3xl shadow-xl border-l-8 ${c.color} flex items-center gap-5 hover:-translate-y-1 cursor-pointer transition-all">
+                    <div class="w-14 h-14 ${c.color.replace('border-', 'bg-')} text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg">
+                        <i class="fas ${c.icon}"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">${c.label}</div>
+                        <div class="text-3xl font-black text-navy leading-none">${c.val}</div>
+                    </div>
+                </div>
+            `).join('');
+            renderTable();
+        }
+
+        window.filterByCard = (f) => {
+            const searchInput = document.getElementById('table-search');
+            searchInput.value = (f === 'all') ? '' : f;
+            renderTable();
+        };
+
+        function renderTable() {
+            const container = document.getElementById('requests-table-container');
+            const searchVal = document.getElementById('table-search').value.toLowerCase();
+            const filtered = state.requests.filter(r => 
+                r.caixa.toLowerCase().includes(searchVal) || r.cliente.toLowerCase().includes(searchVal) || r.estado.toLowerCase().includes(searchVal) || r.tratamento.toLowerCase().includes(searchVal)
+            );
+
+            if(filtered.length === 0) {
+                container.innerHTML = `<div class="p-20 text-center font-black text-slate-300 uppercase">Sem dados</div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="w-full text-left border-collapse min-w-[1400px]">
+                    <thead class="bg-navy text-white text-[10px] font-black uppercase">
+                        <tr>
+                            <th class="p-5">Caixa</th>
+                            <th class="p-5">Cliente</th>
+                            <th class="p-5">Sector</th>
+                            <th class="p-5">Solicitante</th>
+                            <th class="p-5">Tratamento</th>
+                            <th class="p-5">Operador</th>
+                            <th class="p-5">Início</th>
+                            <th class="p-5">Registo</th>
+                            <th class="p-5">Dias</th>
+                            <th class="p-5">Estado</th>
+                            <th class="p-5">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+                        ${filtered.map(r => `
+                            <tr class="border-b bg-white hover:bg-slate-50 transition-colors">
+                                <td class="p-5 font-black text-navy">${r.caixa}</td>
+                                <td class="p-5 font-bold">${r.cliente}</td>
+                                <td class="p-5 text-xs font-black uppercase text-navy">${r.sector}</td>
+                                <td class="p-5 text-xs font-medium text-slate-600">${r.solicitante}</td>
+                                <td class="p-5"><span class="bg-navy/10 text-navy px-3 py-1 rounded-full text-[10px] font-black uppercase">${r.tratamento}</span></td>
+                                <td class="p-5 text-xs font-bold text-slate-500 italic">${r.operador || 'N/A'}</td>
+                                <td class="p-5 font-bold text-slate-400 text-xs">${r.dataInicio.split('T')[0]}</td>
+                                <td class="p-5 font-bold text-slate-400 text-xs">${(r.dataAtual || '').split('T')[0]}</td>
+                                <td class="p-5 font-black text-moss">${calcDays(r.dataInicio)}d</td>
+                                <td class="p-5">
+                                    <select onchange="updateRequestStatus('${r.id}', this.value)" class="text-[9px] font-black uppercase p-2 rounded-lg ${r.estado === 'Finalizado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}">
+                                        <option value="Em Curso" ${r.estado === 'Em Curso' ? 'selected' : ''}>Em Curso</option>
+                                        <option value="Finalizado" ${r.estado === 'Finalizado' ? 'selected' : ''}>Finalizado</option>
+                                    </select>
+                                </td>
+                                <td class="p-5 flex gap-2">
+                                    <button onclick="loadRequestToEdit('${r.id}')" class="text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition-all"><i class="fas fa-edit"></i></button>
+                                    <button onclick="deleteRequest('${r.id}')" class="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        window.updateRequestStatus = (id, status) => {
+            const req = state.requests.find(r => r.id === id);
+            if(req) { req.estado = status; save(); renderHome(); }
+        };
+
+        // --- IMPORTAÇÃO ---
+        let importContext = { headers: [], data: [] };
+        window.initRequestImport = (event) => {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                importContext.headers = jsonData[0];
+                importContext.data = jsonData.slice(1);
+                openMappingModal();
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        window.openMappingModal = () => {
+            const modal = document.getElementById('mapping-modal');
+            const container = document.getElementById('mapping-fields-container');
+            modal.classList.remove('hidden');
+            const fields = [
+                { id: 'caixa', label: 'Número da Caixa' },
+                { id: 'cliente', label: 'Cliente / Empresa' },
+                { id: 'sector', label: 'Setor Responsável' },
+                { id: 'solicitante', label: 'Solicitante' },
+                { id: 'operador', label: 'Operador Responsável' },
+                { id: 'tratamento', label: 'Tratamento' },
+                { id: 'dataInicio', label: 'Data de Início' }
+            ];
+            container.innerHTML = fields.map(f => `
+                <div class="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                    <span class="w-1/3 text-[10px] font-black text-navy uppercase">${f.label}</span>
+                    <select id="map-${f.id}" class="flex-grow p-3 rounded-xl border-2 text-xs font-bold">
+                        <option value="">-- Ignorar --</option>
+                        ${importContext.headers.map((h, i) => `<option value="${i}">${h}</option>`).join('')}
+                    </select>
+                </div>
+            `).join('');
+        };
+
+        window.closeMappingModal = () => document.getElementById('mapping-modal').classList.add('hidden');
+
+        window.executeImportMapped = () => {
+            const maps = {
+                caixa: document.getElementById('map-caixa').value,
+                cliente: document.getElementById('map-cliente').value,
+                sector: document.getElementById('map-sector').value,
+                solicitante: document.getElementById('map-solicitante').value,
+                operador: document.getElementById('map-operador').value,
+                tratamento: document.getElementById('map-tratamento').value,
+                dataInicio: document.getElementById('map-dataInicio').value
+            };
+            const newReqs = importContext.data.map(row => ({
+                id: 'req_' + Math.random().toString(36).substr(2, 9),
+                caixa: maps.caixa !== "" ? String(row[maps.caixa] || "N/A") : "N/A",
+                cliente: maps.cliente !== "" ? String(row[maps.cliente] || "N/A") : "N/A",
+                sector: maps.sector !== "" ? String(row[maps.sector] || "N/A") : "N/A",
+                solicitante: maps.solicitante !== "" ? String(row[maps.solicitante] || "N/A") : "N/A",
+                operador: maps.operador !== "" ? String(row[maps.operador] || "N/A") : "N/A",
+                tratamento: maps.tratamento !== "" ? String(row[maps.tratamento] || "Importado") : "Importado",
+                dataInicio: maps.dataInicio !== "" ? (String(row[maps.dataInicio]).includes('-') ? row[maps.dataInicio] : new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
+                dataAtual: new Date().toISOString().split('T')[0],
+                estado: 'Em Curso',
+                synced: false
+            }));
+            state.requests = [...newReqs, ...state.requests];
+            save();
+            renderHome();
+            closeMappingModal();
+        };
+
+        // --- AUTH ---
+        window.checkAuth = () => {
+            if(state.currentUser) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('app-content').classList.remove('hidden');
+                document.getElementById('logged-user-name').innerText = state.currentUser.name;
+                renderHome();
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('app-content').classList.add('hidden');
+            }
+        };
+
+        document.getElementById('login-form').onsubmit = (e) => {
+            e.preventDefault();
+            const user = document.getElementById('login-user').value;
+            const pass = document.getElementById('login-pass').value;
+            const found = state.entities.find(e => e.type === 'usuarios' && e.name === user && e.pass === pass);
+            if(found) {
+                state.currentUser = found;
+                sessionStorage.setItem('gestdoc_session', JSON.stringify(found));
+                checkAuth();
+            } else document.getElementById('login-error').classList.remove('hidden');
+        };
+
+        window.logout = () => { if(confirm('Sair?')) { state.currentUser = null; sessionStorage.clear(); location.reload(); } };
+
+        // --- NAVEGAÇÃO ---
+        window.navigateTo = (v) => {
+            state.currentView = v;
+            document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${v}`).classList.remove('hidden');
+            if(v === 'home') renderHome();
+            if(v === 'requests') renderRequestsForm();
+        };
+
+        // --- FORM & EDIT ---
+        function renderRequestsForm() {
+            const sectorSelect = document.getElementById('f-sector');
+            const clientSelect = document.getElementById('f-cliente');
+            const opSelect = document.getElementById('f-operador');
+            
+            sectorSelect.innerHTML = '<option value="">Selecione o Setor</option>' + state.entities.filter(e => e.type === 'sectores').map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            clientSelect.innerHTML = '<option value="">Selecione o Cliente</option>' + state.entities.filter(e => e.type === 'clientes').map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+            opSelect.innerHTML = '<option value="">Selecione o Operador</option>' + state.entities.filter(e => e.type === 'operadores').map(o => `<option value="${o.name}">${o.name}</option>`).join('');
+            
+            document.getElementById('f-data-inicio').value = new Date().toISOString().split('T')[0];
+            document.getElementById('f-data-atual').value = new Date().toISOString().split('T')[0];
+            
+            if(!state.editingRequestId) {
+                document.getElementById('form-title').innerText = "Solicitação de Arquivo";
+                document.getElementById('form-submit-btn').innerText = "Registrar Movimentação";
+            }
+        }
+
+        window.updateSolicitantesSelect = (selectedName = null) => {
+            const sid = document.getElementById('f-sector').value;
+            const select = document.getElementById('f-solicitante');
+            const sols = state.entities.filter(e => e.type === 'solicitantes' && e.parentId === sid);
+            select.innerHTML = sols.length === 0 ? `<option value="">Nenhum solicitante</option>` : sols.map(s => `<option value="${s.name}" ${selectedName === s.name ? 'selected' : ''}>${s.name}</option>`).join('');
+            select.disabled = sols.length === 0;
+        };
+
+        window.loadRequestToEdit = (id) => {
+            const req = state.requests.find(r => r.id === id);
+            if (!req) return;
+            state.editingRequestId = id;
+            navigateTo('requests');
+            
+            setTimeout(() => {
+                document.getElementById('form-title').innerText = "Editar Solicitação";
+                document.getElementById('form-submit-btn').innerText = "Salvar Alterações";
+                
+                const clientSelect = document.getElementById('f-cliente');
+                if (![...clientSelect.options].some(o => o.value === req.cliente)) {
+                    const opt = document.createElement('option');
+                    opt.value = req.cliente; opt.text = req.cliente;
+                    clientSelect.add(opt);
+                }
+
+                document.getElementById('f-caixa').value = req.caixa;
+                document.getElementById('f-cliente').value = req.cliente;
+                document.getElementById('f-tratamento').value = req.tratamento;
+                document.getElementById('f-operador').value = req.operador || "";
+                document.getElementById('f-data-inicio').value = (req.dataInicio || '').split('T')[0];
+                document.getElementById('f-data-atual').value = new Date().toISOString().split('T')[0];
+                document.getElementById('f-estado').value = req.estado;
+
+                const sectorOption = [...document.getElementById('f-sector').options].find(o => o.text === req.sector);
+                if(sectorOption) {
+                    document.getElementById('f-sector').value = sectorOption.value;
+                    updateSolicitantesSelect(req.solicitante);
+                }
+            }, 50);
+        };
+
+        document.getElementById('request-form').onsubmit = (e) => {
+            e.preventDefault();
+            const sectorName = document.getElementById('f-sector').selectedOptions[0].text;
+            const data = {
+                caixa: document.getElementById('f-caixa').value,
+                cliente: document.getElementById('f-cliente').value,
+                sector: sectorName,
+                solicitante: document.getElementById('f-solicitante').value,
+                tratamento: document.getElementById('f-tratamento').value,
+                operador: document.getElementById('f-operador').value,
+                dataInicio: document.getElementById('f-data-inicio').value,
+                dataAtual: document.getElementById('f-data-atual').value,
+                estado: document.getElementById('f-estado').value,
+                synced: false
+            };
+
+            if(state.editingRequestId) {
+                const idx = state.requests.findIndex(r => r.id === state.editingRequestId);
+                state.requests[idx] = { ...state.requests[idx], ...data };
+                state.editingRequestId = null;
+            } else {
+                state.requests.unshift({ id: 'req_' + Date.now(), ...data });
+            }
+            save(); navigateTo('home');
+        };
+
+        window.toggleModal = (s) => {
+            document.getElementById('entity-modal').classList.toggle('hidden', !s);
+            if(s) switchEntityTab(state.activeModalTab);
+        };
+
+        window.switchEntityTab = (t) => {
+            state.activeModalTab = t;
+            document.querySelectorAll('.modal-tab').forEach(b => b.classList.toggle('tab-active', b.id === `tab-${t}`));
+            const isSys = t === 'sistema';
+            document.getElementById('system-tab-content').classList.toggle('hidden', !isSys);
+            document.getElementById('entity-list-section').classList.toggle('hidden', isSys);
+            document.getElementById('entity-form-container').classList.toggle('hidden', isSys);
+            if(!isSys) {
+                if(t === 'solicitantes') {
+                    document.getElementById('modal-sector-link').classList.remove('hidden');
+                    document.getElementById('entity-parent').innerHTML = '<option value="">-- Vincular Setor --</option>' + state.entities.filter(e => e.type === 'sectores').map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                } else document.getElementById('modal-sector-link').classList.add('hidden');
+                renderModalList();
+            }
+        };
+
+        function renderModalList() {
+            const list = document.getElementById('modal-entities-list');
+            const current = state.entities.filter(e => e.type === state.activeModalTab);
+            list.innerHTML = current.map(e => `
+                <div class="flex items-center justify-between p-4 border-2 rounded-2xl bg-white border-slate-100 shadow-sm">
+                    <span class="text-sm font-black text-navy uppercase">${e.name}</span>
+                    <button onclick="deleteEntity('${e.id}')" class="text-red-500 hover:text-red-700 transition-all"><i class="fas fa-trash"></i></button>
+                </div>
+            `).join('');
+        }
+
+        window.addEntity = () => {
+            const name = document.getElementById('entity-name').value.trim();
+            if(!name) return;
+            const ent = { id: 'ent_'+Date.now(), name, type: state.activeModalTab };
+            if(state.activeModalTab === 'solicitantes') ent.parentId = document.getElementById('entity-parent').value;
+            state.entities.push(ent); save(); document.getElementById('entity-name').value = ''; renderModalList();
+        };
+
+        window.deleteEntity = (id) => { if(confirm('Apagar?')) { state.entities = state.entities.filter(e => e.id !== id); save(); renderModalList(); } };
+        function calcDays(d) { return Math.floor(Math.abs(new Date() - new Date(d)) / 86400000); }
+        window.deleteRequest = (id) => { if(confirm('Apagar?')) { state.requests = state.requests.filter(r => r.id !== id); save(); renderHome(); } };
+        window.exportToExcel = () => {
+            const ws = XLSX.utils.json_to_sheet(state.requests);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dados");
+            XLSX.writeFile(wb, "Relatorio_Gestdoc.xlsx");
+        };
+
+        window.onload = checkAuth;
+    </script>
+</body>
+</html>
